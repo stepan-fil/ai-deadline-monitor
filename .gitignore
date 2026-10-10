@@ -1,0 +1,37 @@
+# === Secrets / lokale Konfiguration (NIE committen) ===
+.env
+.env.*
+!.env.example
+
+# === Docker-Volumes / lokale Laufzeitdaten ===
+# (Named Volumes liegen unter Docker, nicht im Repo — diese Einträge greifen nur,
+#  falls jemand auf bind-mounts im Projektordner umstellt. Schaden nicht.)
+postgres_data/
+n8n_data/
+ollama_data/
+
+# === Aufnahmen / große Medien ===
+recordings/
+*.mov
+*.mp4
+
+# === Private Briefing-Unterlagen (nie öffentlich) ===
+private/
+*.rtf
+
+# === Test-/Review-Artefakte (Browser-Automation) ===
+.playwright-mcp/
+
+# === Python-Cache (Demo-Skripte in testdata/) ===
+__pycache__/
+*.pyc
+
+# === OS / Editor ===
+.DS_Store
+**/.DS_Store
+.vscode/
+.idea/
+*.log
+
+# === Python venv (Quick start) ===
+.venv/

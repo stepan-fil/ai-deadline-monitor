@@ -1,0 +1,136 @@
+# Fristen- & Verpflichtungswächter — lokaler, self-hosted Stack
+# -------------------------------------------------------------
+# Mac Apple Silicon (Entscheidung ENTSCHEIDUNG-15):
+#   - Ollama läuft NATIV auf dem Mac (Metal-GPU → schnell). NICHT als Container,
+#     da Docker-Container auf Apple Silicon keinen GPU-Zugriff haben (CPU-only = langsam).
+#   - n8n + Postgres laufen als Container.
+#   - n8n erreicht das native Ollama über "host.docker.internal".
+# Start:  cp .env.example .env  →  Werte setzen  →  docker compose up -d
+# Details: siehe SETUP.md
+#
+# Hinweis Demo-Stabilität: n8n ist auf eine feste Version gepinnt (siehe unten), damit ein
+# Update nicht die einstudierte Demo bricht. Postgres nutzt das stabile Major-Tag :16.
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: fw_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      # Nur an localhost gebunden — die DB ist von außen nicht erreichbar (lokal/privat).
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # init.sql legt die Tabelle audit_log an — läuft nur beim ERSTEN Start
+      # (wenn das Volume noch leer ist).
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  n8n:
+    # Gepinnt auf die in M1 getestete Version (M1-Review): :latest driftet sonst und kann
+    # am Aufnahmetag die einstudierten Klickpfade brechen. Update = bewusst Tag erhöhen.
+    image: n8nio/n8n:2.26.7
+    container_name: fw_n8n
+    restart: unless-stopped
+    # n8n erst starten, wenn Postgres wirklich bereit ist (sonst failt der erste Lauf).
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      # Nur an localhost gebunden (wie Postgres) — n8n-UI + gespeicherte Credentials nicht
+      # ins LAN exponieren (M1-Review; stützt Vorgabe 1 "lokal/privat").
+      - "127.0.0.1:5678:5678"
+    environment:
+      N8N_HOST: ${N8N_HOST:-localhost}
+      N8N_PORT: 5678
+      N8N_PROTOCOL: http
+      WEBHOOK_URL: ${WEBHOOK_URL:-http://localhost:5678/}
+      GENERIC_TIMEZONE: ${GENERIC_TIMEZONE:-Europe/Berlin}
+      # Verschlüsselt gespeicherte Credentials. Beliebiger zufälliger String, aus .env.
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      # Auf http://localhost ohne TLS nötig, sonst akzeptiert n8n den Login-Cookie nicht.
+      N8N_SECURE_COOKIE: "false"
+      # Adresse des NATIVEN Ollama auf dem Mac-Host (für den LLM-Pfad).
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      # Modell für den LLM-Pfad (ENTSCHEIDUNG-17). Hinweis: n8n blockt $env im Node-Code (R5),
+      # daher wird das Modell zur BAUZEIT aus .env in den Workflow geschrieben (build_workflows.mjs).
+      # ACHTUNG: Diese Variable allein zu ändern wechselt NICHT das Modell im Workflow —
+      # dafür .env anpassen und `node n8n/build_workflows.mjs` neu laufen lassen (+ Re-Import).
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:3b}
+      # --- Telemetrie / Egress AUS (M1-Review, Vorgabe 1 "keine Daten nach außen") ---
+      # n8n schickt sonst per Default Diagnostics (PostHog) + Versions-/Template-Abrufe nach
+      # außen. Das würde die Kernbotschaft des Vortrags widerlegen → hart deaktiviert.
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
+      N8N_TEMPLATES_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+      # Der "Read/Write Files"-Knoten darf NUR aus dem gemounteten Testdaten-Ordner lesen.
+      # n8n sperrt sonst Datei-Zugriffe (Default nur ~/.n8n-files) → für CSV (M2) + PDFs (M3) freigeben.
+      N8N_RESTRICT_FILE_ACCESS_TO: "/home/node/.n8n-files;/data/testdata"
+      # --- Task-Runner-Stabilität auf dem 8-GB-Mac (ENTSCHEIDUNG-34) ---
+      # n8n 2.26 führt Code-Knoten in einem SEPARATEN Task-Runner-Prozess aus, der sich nach jedem
+      # (Neu-)Start binnen Grant-Token-TTL (Default 30 s) mit dem Broker verbinden MUSS. Auf 8 GB RAM
+      # mit nativem Ollama (resident) dauert der n8n-Startup unter Last >30 s → Token läuft ab → der
+      # Runner verwirft danach jede Task ("Offer expired") → WF-C-Code-Knoten stallen → Seed-Timeout.
+      # Diagnose: n8n-Log empfiehlt exakt dies. TTL großzügig erhöhen macht die Runner-Verbindung
+      # nach `compose restart` (reset_demo) zuverlässig. Reine lokale Reliability-Config, kein Egress.
+      N8N_RUNNERS_GRANT_TOKEN_TTL: "300"
+    volumes:
+      # n8n speichert seinen eigenen Zustand (Workflows, Credentials) hier.
+      # Unsere Demo-Daten liegen getrennt davon in Postgres (Tabelle audit_log).
+      - n8n_data:/home/node/.n8n
+      # Testdaten read-only in den Container: CSV (M2) + Fake-PDFs (M3). n8n liest nur,
+      # schreibt nicht (:ro). Relativer Pfad → unabhängig vom Projekt-Ordnernamen.
+      - ./testdata:/data/testdata:ro
+    extra_hosts:
+      # Macht den Mac-Host (und damit das native Ollama) im Container erreichbar.
+      - "host.docker.internal:host-gateway"
+
+  greenmail:
+    # Lokaler Test-Mailserver (SMTP + IMAP) für den Mail-Eingang (ENTSCHEIDUNG-28).
+    # Damit bleibt der gesamte Mail-Weg LOKAL — keine Cloud (Gmail/Outlook), stützt Vorgabe 1.
+    # n8n holt die Mails über den Compose-Servicenamen "greenmail" ab (IMAP 3143, Klartext).
+    # Tag bei Bedarf prüfen/anpassen:  docker pull greenmail/standalone
+    image: greenmail/standalone:2.1.0
+    container_name: fw_greenmail
+    restart: unless-stopped
+    environment:
+      # Ein Demo-Postfach + alle Test-Protokolle auf den Standard-Test-Ports (IMAP 3143, SMTP 3025).
+      # KEINE echten Secrets — reine, lokale Demo-Zugangsdaten aus .env (R5).
+      # Nutzer-Syntax: login:passwort@domain  → Login "fristen", Mailadresse fristen@<domain>.
+      GREENMAIL_OPTS: >-
+        -Dgreenmail.setup.test.all
+        -Dgreenmail.hostname=0.0.0.0
+        -Dgreenmail.users=${MAIL_USER}:${MAIL_PASS}@${MAIL_DOMAIN}
+        -Dgreenmail.verbose
+    ports:
+      # Nur an localhost gebunden (wie Postgres/n8n) — Mailserver NICHT ins LAN öffnen.
+      # Diese Ports brauchst du nur vom Mac-Host aus, um die Test-Mail zu senden.
+      - "127.0.0.1:3025:3025"   # SMTP  — Test-Mail mit PDF-Anhang senden (testdata/send_test_mail.py)
+      - "127.0.0.1:3143:3143"   # IMAP  — n8n liest hier (container-intern via greenmail:3143)
+
+# --- OPTIONAL: Ollama als Container (nur für Linux/Windows ohne native Installation) ---
+# Auf Mac Apple Silicon NICHT verwenden (kein GPU-Zugriff → langsam, Risiko R10).
+# Bei Bedarf einkommentieren und OLLAMA_BASE_URL in .env auf http://ollama:11434 setzen.
+#  ollama:
+#    image: ollama/ollama:latest
+#    container_name: fw_ollama
+#    restart: unless-stopped
+#    ports:
+#      - "11434:11434"
+#    volumes:
+#      - ollama_data:/root/.ollama
+
+volumes:
+  postgres_data:
+  n8n_data:
+#  ollama_data:

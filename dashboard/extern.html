@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Fristen-Übersicht — Freigegeben (Externe Ansicht)</title>
+<style>
+  :root{
+    --bg-1:#07130f; --bg-2:#0c1f18;
+    --panel:#ffffff; --panel-2:#f6fbf8;
+    --ink:#0f172a; --ink-2:#334155; --muted:#64748b; --line:#e6eaf0;
+    --green:#0f766e; --green-bg:#ecfdf5;
+    --gruen:#15803d; --gelb:#b45309; --rot:#be123c;
+    --gruen-bg:#f0fdf4; --gelb-bg:#fffbeb; --rot-bg:#fff1f2;
+    --shadow:0 14px 40px -12px rgba(6,20,15,.45);
+    --r-card:18px; --r-md:11px;
+    --ease:cubic-bezier(.22,.61,.36,1);
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; font-family:var(--sans); color:var(--ink);
+    background:radial-gradient(1200px 600px at 70% -10%, #12342a 0, var(--bg-1) 60%), var(--bg-1);
+    min-height:100dvh; padding:34px 26px 56px; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1180px; margin:0 auto}
+
+  header{display:flex; align-items:flex-end; justify-content:space-between; gap:24px; flex-wrap:wrap; margin-bottom:16px}
+  .badge{display:inline-flex; align-items:center; gap:8px; font-size:11.5px; font-weight:700; letter-spacing:.6px;
+    text-transform:uppercase; color:#d1fae5; background:rgba(16,185,129,.14); border:1px solid rgba(16,185,129,.35);
+    padding:6px 12px; border-radius:999px; margin-bottom:11px}
+  .badge .lock{font-size:12px}
+  h1{font-size:28px; font-weight:600; letter-spacing:-.5px; margin:0 0 6px; color:#fff}
+  .sub{color:#9ec8ba; font-size:14.5px; max-width:64ch; line-height:1.5}
+  .sub b{color:#d7efe6; font-weight:600}
+  .status{display:flex; align-items:center; gap:18px; font-size:13px; color:#8fb6a8; white-space:nowrap}
+  .status .k{color:#5f8576}
+  .status b{color:#dcfce7; font-weight:600; font-variant-numeric:tabular-nums}
+  .live{display:flex; align-items:center; gap:7px}
+  .dot{width:8px; height:8px; border-radius:50%; background:#22c55e; box-shadow:0 0 0 0 rgba(34,197,94,.7); animation:pulse 2s infinite}
+  @keyframes pulse{70%{box-shadow:0 0 0 8px rgba(34,197,94,0)}100%{box-shadow:0 0 0 0 rgba(34,197,94,0)}}
+
+  .toolbar{display:flex; align-items:center; justify-content:flex-end; gap:15px; flex-wrap:wrap; margin:6px 2px 16px}
+  .legend{display:flex; gap:16px; color:#8fb6a8; font-size:13px; flex-wrap:wrap; align-items:center}
+  .legend span{display:flex; align-items:center; gap:6px}
+  .lamp{width:11px; height:11px; border-radius:50%}
+  .lamp.gruen{background:var(--gruen)} .lamp.gelb{background:var(--gelb)} .lamp.rot{background:var(--rot)}
+
+  .err{background:#7f1d1d; color:#fee2e2; padding:10px 14px; border-radius:10px; font-size:13px; margin-bottom:16px; display:none}
+
+  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(380px,1fr)); gap:18px}
+  .card{background:var(--panel); border-radius:var(--r-card); overflow:hidden; box-shadow:var(--shadow);
+    border:1px solid rgba(255,255,255,.06); display:flex; flex-direction:column; animation:rise .42s var(--ease) both;
+    animation-delay:calc(var(--i,0) * 45ms)}
+  @keyframes rise{from{opacity:0; transform:translateY(14px)}to{opacity:1; transform:none}}
+  .card .bar{height:5px}
+  .card .bar.gruen{background:var(--gruen)} .card .bar.gelb{background:var(--gelb)} .card .bar.rot{background:var(--rot)}
+  .card-head{display:flex; align-items:center; gap:14px; padding:17px 19px 11px}
+  .biglamp{width:36px; height:36px; border-radius:50%; flex:0 0 auto; position:relative}
+  .biglamp::after{content:""; position:absolute; inset:7px 7px auto auto; width:9px; height:9px; border-radius:50%; background:rgba(255,255,255,.6)}
+  .biglamp.gruen{background:var(--gruen)} .biglamp.gelb{background:var(--gelb)} .biglamp.rot{background:var(--rot)}
+  .doc{min-width:0}
+  .doc .p{font-weight:600; font-size:17px; letter-spacing:-.2px; line-height:1.25}
+  .doc .f{font-weight:500; color:var(--muted); font-size:13px; margin-top:2px}
+  .src{margin-left:auto; align-self:flex-start; font-size:11px; font-weight:700; letter-spacing:.4px; padding:4px 10px; border-radius:7px}
+  .src.llm{background:#f5f3ff; color:#6d28d9} .src.csv{background:#eef2ff; color:#4338ca}
+
+  .section{padding:5px 19px}
+  .section h4{margin:11px 0 7px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.6px; display:flex; align-items:center; gap:7px}
+  .read h4{color:#6d28d9}
+  .calc{background:var(--panel-2); margin-top:5px} .calc h4{color:#0e7490}
+  .row{display:flex; justify-content:space-between; gap:14px; padding:7px 0; font-size:14px; border-bottom:1px solid #eef1f5}
+  .row:last-child{border-bottom:0}
+  .row .k{color:var(--muted)} .row .v{font-weight:600; text-align:right; color:var(--ink-2)}
+  .count{font-variant-numeric:tabular-nums}
+  .v.rot{color:var(--rot)} .v.gelb{color:var(--gelb)} .v.gruen{color:var(--gruen)}
+  .pill{display:inline-block; padding:3px 11px; border-radius:999px; font-weight:700; font-size:12.5px; letter-spacing:.3px}
+  .pill.gruen{background:var(--gruen-bg); color:var(--gruen)} .pill.gelb{background:var(--gelb-bg); color:var(--gelb)} .pill.rot{background:var(--rot-bg); color:var(--rot)}
+
+  .foot{display:flex; align-items:center; gap:10px; padding:14px 19px; margin-top:auto; border-top:1px solid var(--line); background:var(--green-bg)}
+  .foot .chk{display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:#d1fae5; color:var(--green); font-size:12px}
+  .foot .t{color:var(--green); font-weight:600; font-size:13.5px}
+
+  .empty{color:#9ec8ba; padding:46px 30px; text-align:center; font-size:14.5px; line-height:1.6;
+    background:rgba(255,255,255,.03); border:1px dashed rgba(255,255,255,.12); border-radius:var(--r-card)}
+  footer{color:#6f9486; font-size:12px; text-align:center; line-height:1.7; margin-top:28px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <span class="badge"><span class="lock">🔒</span> Externe Ansicht · nur freigegebene Meldungen</span>
+      <h1>Fristen-Übersicht</h1>
+      <div class="sub">Diese Ansicht zeigt <b>ausschließlich Meldungen, die ein Mensch freigegeben hat</b>. Was intern noch in Prüfung ist, erscheint hier nicht. Alles läuft <b>lokal</b>.</div>
+    </div>
+    <div class="status">
+      <span class="live"><span class="dot"></span> live</span>
+      <span><span class="k">Freigegeben</span> <b id="count">–</b></span>
+      <span><span class="k">Stand</span> <b id="updated">–</b></span>
+    </div>
+  </header>
+
+  <div class="toolbar">
+    <div class="legend">
+      <span><i class="lamp gruen"></i> grün · im Vorlauf</span>
+      <span><i class="lamp gelb"></i> gelb · Vorwarnung läuft</span>
+      <span><i class="lamp rot"></i> rot · Handlung nötig</span>
+    </div>
+  </div>
+
+  <div id="err" class="err"></div>
+  <div id="grid" class="grid"></div>
+
+  <footer>
+    Daten aus Postgres über lokalen n8n-Webhook · nur freigegebene Einträge · Aktualisierung alle 2,5&nbsp;s · kein Cloud-Dienst beteiligt.
+  </footer>
+</div>
+
+<script>
+  const API = '/webhook/extern-data';
+  const grid = document.getElementById('grid'), errBox = document.getElementById('err');
+
+  const pad = n => String(n).padStart(2, '0');
+  const isTrue = v => v === true || v === 't' || v === 'true' || v === 1;
+  const fmtDate = v => { if(!v) return '–'; const s = String(v).slice(0,10); const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? `${m[3]}.${m[2]}.${m[1]}` : s; };
+  const fmtDT = v => { if(!v) return '–'; const d = new Date(v); if(isNaN(d.getTime())) return String(v); return `${pad(d.getDate())}.${pad(d.getMonth()+1)}. ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+  const restWarn = n => { n = Number(n); if(n > 0) return `in ${n} Tagen`; if(n === 0) return 'heute'; return `seit ${Math.abs(n)} Tagen offen`; };
+  const restStich = n => { n = Number(n); return n >= 0 ? `in ${n} Tagen` : `vor ${Math.abs(n)} Tagen`; };
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  function card(r, i){
+    const a = (r.ampel || 'gruen').toLowerCase();
+    const sm = (r.source_mode || '').toLowerCase();
+    return `
+    <div class="card" style="--i:${i}">
+      <div class="bar ${a}"></div>
+      <div class="card-head">
+        <div class="biglamp ${a}"></div>
+        <div class="doc"><div class="p">${esc(r.partner)}</div><div class="f">${esc(r.doc_name)}</div></div>
+        <div class="src ${sm}">${esc(sm.toUpperCase())}</div>
+      </div>
+      <div class="section read">
+        <h4>${sm === 'csv' ? '📄 Eingelesen · Quelle CSV' : '🧠 Gelesen · von der KI'}</h4>
+        <div class="row"><span class="k">Pflicht</span><span class="v">${esc(r.pflicht)}</span></div>
+        <div class="row"><span class="k">Vertragspartner</span><span class="v">${esc(r.partner)}</span></div>
+        <div class="row"><span class="k">Stichtag</span><span class="v">${fmtDate(r.stichtag)}</span></div>
+        <div class="row"><span class="k">Vorlauf</span><span class="v">${esc(r.vorlauf_tage)} Tage</span></div>
+      </div>
+      <div class="section calc">
+        <h4>⚙️ Berechnet · deterministisch, ohne KI</h4>
+        <div class="row"><span class="k">Warndatum</span><span class="v">${fmtDate(r.warndatum)}</span></div>
+        <div class="row"><span class="k">Vorwarnung</span><span class="v count ${a}">${restWarn(r.resttage)}</span></div>
+        <div class="row"><span class="k">Stichtag</span><span class="v count">${restStich(r.resttage_stichtag)}</span></div>
+        <div class="row"><span class="k">Ampel</span><span class="v"><span class="pill ${a}">${a.toUpperCase()}</span></span></div>
+        <div class="row"><span class="k">Eskalationsstufe</span><span class="v">${({0:'0 — im Vorlauf',1:'1 — Vorwarnung',2:'2 — Eskalation'})[r.eskalationsstufe] ?? esc(r.eskalationsstufe)}</span></div>
+      </div>
+      <div class="foot"><span class="chk">✓</span><span class="t">Freigegeben${r.approved_at ? ' · ' + fmtDT(r.approved_at) : ''}</span></div>
+    </div>`;
+  }
+
+  // Leerer Body (n8n liefert bei 0 freigegebenen Zeilen 0 Bytes statt "[]") robust als [] behandeln,
+  // damit der „leeren Start"-Zustand sauber rendert (kein JSON-Fehler) — wichtig für den Reveal (Szene 7).
+  async function readRows(res){ const t = await res.text(); let r = t ? JSON.parse(t) : []; return Array.isArray(r) ? r : (r ? [r] : []); }
+
+  async function tick(){
+    try{
+      const res = await fetch(API, {cache:'no-store'});
+      if(!res.ok) throw new Error('HTTP ' + res.status);
+      const rows = await readRows(res);
+      errBox.style.display = 'none';
+      document.getElementById('count').textContent = rows.length;
+      const maxApp = rows.reduce((m, r) => (r.approved_at && r.approved_at > m) ? r.approved_at : m, '');
+      document.getElementById('updated').textContent = maxApp ? fmtDT(maxApp) : '–';
+      grid.innerHTML = rows.length
+        ? rows.map(card).join('')
+        : '<div class="empty">Noch nichts freigegeben.<br>Sobald im internen Dashboard ein Mensch eine Meldung <b>freigibt</b>, erscheint sie hier.</div>';
+    }catch(e){ errBox.style.display = 'block'; errBox.textContent = 'Keine Verbindung zum Daten-Webhook (' + e.message + ') — läuft der Dashboard-Server-Workflow?'; }
+  }
+
+  tick();
+  setInterval(tick, 2500);
+</script>
+</body>
+</html>

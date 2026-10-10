@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Fristen- &amp; Verpflichtungswächter</title>
+<style>
+  :root{
+    --bg-1:#0b1220; --bg-2:#111a2e;
+    --panel:#ffffff; --panel-2:#f8fafc;
+    --ink:#0f172a; --ink-2:#334155; --muted:#64748b; --line:#e6eaf0;
+    --violet:#6d28d9; --violet-bg:#f5f3ff; --teal:#0e7490;
+    --gruen:#15803d; --gelb:#b45309; --rot:#be123c;
+    --gruen-bg:#f0fdf4; --gelb-bg:#fffbeb; --rot-bg:#fff1f2;
+    --shadow:0 14px 40px -12px rgba(8,15,30,.45);
+    --shadow-sm:0 2px 8px -2px rgba(8,15,30,.18);
+    --r-card:18px; --r-md:11px; --r-sm:8px;
+    --ease:cubic-bezier(.22,.61,.36,1);
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; font-family:var(--sans); color:var(--ink);
+    background:radial-gradient(1200px 600px at 70% -10%, #1c2944 0, var(--bg-1) 60%), var(--bg-1);
+    min-height:100dvh; padding:34px 26px 56px; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1180px; margin:0 auto}
+
+  header{display:flex; align-items:flex-end; justify-content:space-between; gap:24px; flex-wrap:wrap; margin-bottom:22px}
+  h1{font-size:28px; font-weight:600; letter-spacing:-.5px; margin:0 0 6px; color:#fff}
+  .sub{color:#aebbcd; font-size:14.5px; max-width:64ch; line-height:1.5}
+  .sub b{color:#e3eaf3; font-weight:600}
+  .status{display:flex; align-items:center; gap:18px; font-size:13px; color:#9fb0c6; white-space:nowrap}
+  .status .k{color:#6b7c95}
+  .status b{color:#e2e8f0; font-weight:600; font-variant-numeric:tabular-nums}
+  .live{display:flex; align-items:center; gap:7px}
+  .dot{width:8px; height:8px; border-radius:50%; background:#22c55e; box-shadow:0 0 0 0 rgba(34,197,94,.7); animation:pulse 2s infinite}
+  @keyframes pulse{70%{box-shadow:0 0 0 8px rgba(34,197,94,0)}100%{box-shadow:0 0 0 0 rgba(34,197,94,0)}}
+
+  .toolbar{display:flex; align-items:center; justify-content:space-between; gap:18px; flex-wrap:wrap; margin-bottom:18px}
+  /* Drei-Wege-Schalter: Zu prüfen · Freigegeben · Audit-Log (gleitender Thumb) */
+  .seg{position:relative; display:inline-flex; background:#0e1830; border:1px solid #243352; border-radius:13px; padding:4px}
+  .seg button{position:relative; z-index:1; display:inline-flex; align-items:center; gap:8px; border:0; background:transparent;
+    color:#9fb0c6; font-family:var(--sans); font-size:14px; font-weight:600; padding:9px 18px; border-radius:9px;
+    cursor:pointer; transition:color .25s var(--ease)}
+  .seg button.on{color:#0b1220}
+  .seg button:focus-visible{outline:2px solid #6d8cff; outline-offset:2px}
+  .seg .cnt{display:inline-flex; align-items:center; justify-content:center; min-width:22px; height:20px; padding:0 6px;
+    border-radius:999px; font-size:12px; font-weight:700; font-variant-numeric:tabular-nums;
+    background:rgba(159,176,198,.18); color:#aebbcd; transition:background .25s var(--ease), color .25s var(--ease)}
+  .seg button.on .cnt{background:rgba(11,18,32,.12); color:#0b1220}
+  .seg .thumb{position:absolute; top:4px; left:4px; height:calc(100% - 8px); border-radius:9px; background:#fff;
+    box-shadow:0 2px 8px rgba(0,0,0,.25); transition:transform .32s var(--ease), width .32s var(--ease)}
+  .legend{display:flex; gap:16px; color:#9fb0c6; font-size:13px; flex-wrap:wrap; align-items:center}
+  .legend span{display:flex; align-items:center; gap:6px}
+  .lamp{width:11px; height:11px; border-radius:50%}
+  .lamp.gruen{background:var(--gruen)} .lamp.gelb{background:var(--gelb)} .lamp.rot{background:var(--rot)}
+
+  .hint{color:#93a6bf; font-size:13px; line-height:1.55; margin:0 2px 16px; max-width:98ch}
+  .hint b{color:#c9d4e2; font-weight:600}
+
+  .err{background:#7f1d1d; color:#fee2e2; padding:10px 14px; border-radius:10px; font-size:13px; margin-bottom:16px; display:none}
+
+  /* ---- Sichten + Switch-Effekt ---- */
+  .view{display:none}
+  .view.active{display:block; animation:viewin .34s var(--ease) both}
+  @keyframes viewin{from{opacity:0; transform:translateY(8px)}to{opacity:1; transform:none}}
+
+  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(380px,1fr)); gap:18px}
+  .card{background:var(--panel); border-radius:var(--r-card); overflow:hidden; box-shadow:var(--shadow);
+    border:1px solid rgba(255,255,255,.06); display:flex; flex-direction:column}
+  .view.intro .card{animation:rise .42s var(--ease) both; animation-delay:calc(var(--i,0) * 45ms)}
+  @keyframes rise{from{opacity:0; transform:translateY(14px)}to{opacity:1; transform:none}}
+  .card .bar{height:5px}
+  .card .bar.gruen{background:var(--gruen)} .card .bar.gelb{background:var(--gelb)} .card .bar.rot{background:var(--rot)}
+  /* „gerade eingegangen" — neueste Kachel (run_at < ~3 min) dezent hervorheben (Szene 5).
+     Egress-frei (reines CSS), Violett = an die „KI gelesen"-Farbe gekoppelt. Nur in „Zu prüfen". */
+  .card.new{box-shadow:var(--shadow), 0 0 0 2px var(--violet); animation:cardnew 2.5s var(--ease) infinite}
+  @keyframes cardnew{0%,100%{box-shadow:var(--shadow), 0 0 0 2px rgba(109,40,217,.55)}50%{box-shadow:var(--shadow), 0 0 0 7px rgba(109,40,217,.13)}}
+  .newflag{display:flex; align-items:center; gap:8px; padding:8px 18px; background:var(--violet-bg); color:var(--violet);
+    font-size:11.5px; font-weight:700; letter-spacing:.5px; text-transform:uppercase}
+  .newflag .nd{width:7px; height:7px; border-radius:50%; background:var(--violet); box-shadow:0 0 0 0 rgba(109,40,217,.55); animation:nddot 1.6s infinite}
+  @keyframes nddot{70%{box-shadow:0 0 0 7px rgba(109,40,217,0)}100%{box-shadow:0 0 0 0 rgba(109,40,217,0)}}
+  .card-head{display:flex; align-items:center; gap:14px; padding:17px 19px 11px}
+  .biglamp{width:36px; height:36px; border-radius:50%; flex:0 0 auto; position:relative}
+  .biglamp::after{content:""; position:absolute; inset:7px 7px auto auto; width:9px; height:9px; border-radius:50%; background:rgba(255,255,255,.6)}
+  .biglamp.gruen{background:var(--gruen)} .biglamp.gelb{background:var(--gelb)} .biglamp.rot{background:var(--rot)}
+  .doc{min-width:0}
+  .doc .p{font-weight:600; font-size:17px; letter-spacing:-.2px; line-height:1.25}
+  .doc .f{font-weight:500; color:var(--muted); font-size:13px; margin-top:2px}
+  .src{margin-left:auto; align-self:flex-start; font-size:11px; font-weight:700; letter-spacing:.4px; padding:4px 10px; border-radius:7px}
+  .src.llm{background:var(--violet-bg); color:var(--violet)} .src.csv{background:#eef2ff; color:#4338ca}
+
+  .section{padding:5px 19px}
+  .section h4{margin:11px 0 7px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.6px; display:flex; align-items:center; gap:7px}
+  .read h4{color:var(--violet)}
+  .calc{background:var(--panel-2); margin-top:5px} .calc h4{color:var(--teal)}
+  .row{display:flex; justify-content:space-between; gap:14px; padding:7px 0; font-size:14px; border-bottom:1px solid #eef1f5}
+  .row:last-child{border-bottom:0}
+  .row .k{color:var(--muted)} .row .v{font-weight:600; text-align:right; color:var(--ink-2)}
+  .count{font-variant-numeric:tabular-nums}
+  .v.rot{color:var(--rot)} .v.gelb{color:var(--gelb)} .v.gruen{color:var(--gruen)}
+  .pill{display:inline-block; padding:3px 11px; border-radius:999px; font-weight:700; font-size:12.5px; letter-spacing:.3px}
+  .pill.gruen{background:var(--gruen-bg); color:var(--gruen)} .pill.gelb{background:var(--gelb-bg); color:var(--gelb)} .pill.rot{background:var(--rot-bg); color:var(--rot)}
+
+  .action{display:flex; align-items:center; gap:12px; padding:15px 19px; margin-top:auto; border-top:1px solid var(--line)}
+  .btn{background:var(--ink); color:#fff; border:0; border-radius:var(--r-md); padding:10px 18px; font-family:var(--sans);
+    font-size:14px; font-weight:600; cursor:pointer; transition:background .2s var(--ease), transform .08s var(--ease)}
+  .btn:hover{background:#1e293b} .btn:active{transform:translateY(1px)}
+  .btn:focus-visible{outline:2px solid #6d8cff; outline-offset:2px}
+  .await{color:var(--muted); font-size:13px}
+  .ok{display:inline-flex; align-items:center; gap:9px; color:var(--gruen); font-weight:600; font-size:14px}
+  .ok .chk{display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:var(--gruen-bg); font-size:12px}
+
+  /* ---- Audit-Sicht ---- */
+  .audit{background:var(--panel); border-radius:var(--r-card); border:1px solid rgba(255,255,255,.06); box-shadow:var(--shadow); overflow:hidden}
+  .audit .scroll{overflow:auto; max-height:64dvh}
+  table{border-collapse:collapse; width:100%; font-size:13.5px}
+  thead th{position:sticky; top:0; background:var(--panel-2); color:var(--muted); font-weight:600; text-align:left;
+    padding:12px 15px; border-bottom:1px solid var(--line); white-space:nowrap; letter-spacing:.2px}
+  tbody td{padding:11px 15px; border-bottom:1px solid #f1f4f8; white-space:nowrap; color:var(--ink-2)}
+  tbody tr{transition:background .15s var(--ease)} tbody tr:hover{background:#fafbfe}
+  .view.intro tbody tr{animation:rise .4s var(--ease) both; animation-delay:calc(var(--i,0) * 28ms)}
+  .tag{font-size:11px; font-weight:600; padding:2px 8px; border-radius:6px; letter-spacing:.3px}
+  .tag.csv{background:#eef2ff; color:#4338ca} .tag.llm{background:var(--violet-bg); color:var(--violet)}
+  .tdmono{font-variant-numeric:tabular-nums}
+
+  .empty{color:#aab6c9; padding:46px 30px; text-align:center; font-size:14.5px; line-height:1.6;
+    background:rgba(255,255,255,.03); border:1px dashed rgba(255,255,255,.12); border-radius:var(--r-card)}
+  .empty b{color:#cdd8e6; font-weight:600}
+  footer{color:#7b8aa1; font-size:12px; text-align:center; line-height:1.7; margin-top:28px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Fristen- &amp; Verpflichtungswächter</h1>
+      <div class="sub">Die KI <b>liest nur</b> die Felder aus dem Dokument — Ampel, Countdown und Eskalation rechnet das System <b>deterministisch</b>, ohne KI. Alles läuft <b>lokal</b>.</div>
+    </div>
+    <div class="status">
+      <span class="live"><span class="dot"></span> live</span>
+      <span><span class="k">Quelle</span> <b id="mode">…</b></span>
+      <span><span class="k">Daten-Stand</span> <b id="updated">–</b></span>
+    </div>
+  </header>
+
+  <div class="toolbar">
+    <div class="seg" role="tablist" aria-label="Ansicht wechseln">
+      <span class="thumb" id="thumb"></span>
+      <button id="tab-pruefen" class="on" role="tab" aria-selected="true" onclick="switchView('pruefen')">Zu prüfen <span class="cnt" id="cnt-pruefen">·</span></button>
+      <button id="tab-frei" role="tab" aria-selected="false" onclick="switchView('frei')">Freigegeben <span class="cnt" id="cnt-frei">·</span></button>
+      <button id="tab-audit" role="tab" aria-selected="false" onclick="switchView('audit')">Audit-Log</button>
+    </div>
+    <div class="legend" id="legend">
+      <span><i class="lamp gruen"></i> grün · im Vorlauf</span>
+      <span><i class="lamp gelb"></i> gelb · Vorwarnung läuft</span>
+      <span><i class="lamp rot"></i> rot · Handlung nötig</span>
+    </div>
+  </div>
+
+  <div id="err" class="err"></div>
+
+  <!-- ANSICHT 1 — Zu prüfen (approved=false): Arbeits-Warteschlange, mit Freigeben. Standard beim Laden. -->
+  <section id="view-pruefen" class="view active intro" role="tabpanel" aria-label="Zu prüfen">
+    <p class="hint">Diese Meldungen warten auf die <b>bewusste Freigabe durch einen Menschen</b> (Human-in-the-Loop). Oben steht, was die <b>KI gelesen</b> hat, darunter, was das System <b>berechnet</b> hat. Ein neu per E-Mail eingegangenes Dokument erscheint hier zuerst — markiert mit <b>„● gerade eingegangen"</b>. Mit <b>„✋ Freigeben"</b> wird die Meldung bestätigt und wandert in „Freigegeben".</p>
+    <div id="grid-pruefen" class="grid"></div>
+  </section>
+
+  <!-- ANSICHT 2 — Freigegeben (approved=true): die finalen, read-only. Erscheinen auch extern. -->
+  <section id="view-frei" class="view intro" role="tabpanel" aria-label="Freigegeben">
+    <p class="hint">Vom Menschen <b>bestätigte</b> Meldungen — schreibgeschützt. Genau diese Einträge sind auch in der <b>externen Ansicht</b> sichtbar. Jede zeigt den Zeitpunkt der Freigabe.</p>
+    <div id="grid-frei" class="grid"></div>
+  </section>
+
+  <!-- ANSICHT 3 — Audit-Log: vollständiges Protokoll (unverändert). -->
+  <section id="view-audit" class="view" role="tabpanel" aria-label="Audit-Log">
+    <p class="hint">Vollständiges Protokoll <b>jedes Laufs</b> aus der Datenbank — wann gelesen, aus welcher Quelle (KI/CSV), welche Ampel berechnet wurde und ob ein Mensch freigegeben hat. Nichts wird überschrieben; jede Zeile bleibt nachvollziehbar.</p>
+    <div class="audit"><div class="scroll"><table>
+      <thead><tr>
+        <th>Zeitpunkt</th><th>Dokument</th><th>Quelle</th><th>Partner</th>
+        <th>Stichtag</th><th>Warndatum</th><th>Ampel</th><th>Stufe</th><th>Freigabe</th>
+      </tr></thead>
+      <tbody id="auditBody"></tbody>
+    </table></div></div>
+  </section>
+
+  <footer>
+    Daten aus Postgres über lokale n8n-Webhooks · Aktualisierung alle 2,5&nbsp;s · kein Cloud-Dienst beteiligt.
+  </footer>
+</div>
+
+<script>
+  const API = '/webhook/fristen-data', AUDIT_API = '/webhook/audit-log', FREIGEBEN_API = '/webhook/freigeben';
+  const gridP = document.getElementById('grid-pruefen'), gridF = document.getElementById('grid-frei');
+  const errBox = document.getElementById('err');
+  let current = 'pruefen';                       // Standard-Ansicht beim Laden = „Zu prüfen"
+  let sigP = null, sigF = null;                  // je Sicht eine Signatur → Render nur bei Änderung (kein Flackern)
+  const NEU_FENSTER_MS = 180000;                 // Kachel gilt ~3 min als „gerade eingegangen" (Aufnahme-Puffer; Seed wird zurückdatiert)
+
+  // Leerer Body (n8n liefert bei 0 Zeilen 0 Bytes statt "[]") robust als [] behandeln.
+  async function readRows(res){ const t = await res.text(); let r = t ? JSON.parse(t) : []; return Array.isArray(r) ? r : (r ? [r] : []); }
+  // „neu" = run_at liegt < ~3 min zurück (kleine Uhren-Toleranz nach vorn).
+  function isNew(r){ if(!r || !r.run_at) return false; const age = Date.now() - new Date(r.run_at).getTime(); return age > -15000 && age < NEU_FENSTER_MS; }
+
+  const pad = n => String(n).padStart(2, '0');
+  const isTrue = v => v === true || v === 't' || v === 'true' || v === 1;
+  const fmtDate = v => { if(!v) return '–'; const s = String(v).slice(0,10); const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? `${m[3]}.${m[2]}.${m[1]}` : s; };
+  const fmtDT = v => { if(!v) return '–'; const d = new Date(v); if(isNaN(d.getTime())) return String(v); return `${pad(d.getDate())}.${pad(d.getMonth()+1)}. ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+  const restWarn = n => { n = Number(n); if(n > 0) return `in ${n} Tagen`; if(n === 0) return 'heute'; return `seit ${Math.abs(n)} Tagen offen`; };
+  const restStich = n => { n = Number(n); return n >= 0 ? `in ${n} Tagen` : `vor ${Math.abs(n)} Tagen`; };
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  // Eine Kachel rendern. allowNew steuert das „gerade eingegangen"-Highlight (nur in „Zu prüfen").
+  // Die Aktionszeile richtet sich nach approved → Button (Zu prüfen) bzw. read-only-Status (Freigegeben).
+  function card(r, i, allowNew){
+    const a = (r.ampel || 'gruen').toLowerCase();
+    const sm = (r.source_mode || '').toLowerCase();
+    const approved = isTrue(r.approved);
+    const showNew = allowNew && isNew(r);
+    const action = approved
+      ? `<span class="ok"><span class="chk">✓</span> Freigegeben${r.approved_at ? ' · ' + fmtDT(r.approved_at) : ''}</span>`
+      : `<button class="btn" onclick="freigeben(${Number(r.id)})" title="Bestätigt diese Meldung und protokolliert sie im Audit-Log">✋ Freigeben</button><span class="await">wartet auf Mensch-Freigabe</span>`;
+    return `
+    <div class="card${showNew ? ' new' : ''}" style="--i:${i}">
+      <div class="bar ${a}"></div>
+      ${showNew ? '<div class="newflag"><span class="nd"></span> gerade eingegangen</div>' : ''}
+      <div class="card-head">
+        <div class="biglamp ${a}"></div>
+        <div class="doc"><div class="p">${esc(r.partner)}</div><div class="f">${esc(r.doc_name)}</div></div>
+        <div class="src ${sm}">${esc(sm.toUpperCase())}</div>
+      </div>
+      <div class="section read">
+        <h4>${sm === 'csv' ? '📄 Eingelesen · Quelle CSV' : '🧠 Gelesen · von der KI'}</h4>
+        <div class="row"><span class="k">Pflicht</span><span class="v">${esc(r.pflicht)}</span></div>
+        <div class="row"><span class="k">Vertragspartner</span><span class="v">${esc(r.partner)}</span></div>
+        <div class="row"><span class="k">Stichtag</span><span class="v">${fmtDate(r.stichtag)}</span></div>
+        <div class="row"><span class="k">Vorlauf</span><span class="v">${esc(r.vorlauf_tage)} Tage</span></div>
+      </div>
+      <div class="section calc">
+        <h4>⚙️ Berechnet · deterministisch, ohne KI</h4>
+        <div class="row"><span class="k">Warndatum</span><span class="v">${fmtDate(r.warndatum)}</span></div>
+        <div class="row"><span class="k">Vorwarnung</span><span class="v count ${a}">${restWarn(r.resttage)}</span></div>
+        <div class="row"><span class="k">Stichtag</span><span class="v count">${restStich(r.resttage_stichtag)}</span></div>
+        <div class="row"><span class="k">Ampel</span><span class="v"><span class="pill ${a}">${a.toUpperCase()}</span></span></div>
+        <div class="row"><span class="k">Eskalationsstufe</span><span class="v">${({0:'0 — im Vorlauf',1:'1 — Vorwarnung',2:'2 — Eskalation'})[r.eskalationsstufe] ?? esc(r.eskalationsstufe)}</span></div>
+      </div>
+      <div class="action">${action}</div>
+    </div>`;
+  }
+
+  function rowSig(r){ return `${r.id}:${isTrue(r.approved)}:${r.run_at}:${isNew(r)?1:0}`; }
+  function renderGrid(el, rows, allowNew, emptyHtml){
+    el.innerHTML = rows.length ? rows.map((r, i) => card(r, i, allowNew)).join('') : emptyHtml;
+  }
+  const EMPTY_PRUEFEN = '<div class="empty">Nichts zu prüfen — alle Meldungen sind <b>freigegeben</b>.<br>Ein neu per E-Mail eingegangenes Dokument erscheint hier automatisch.</div>';
+  const EMPTY_FREI = '<div class="empty">Noch nichts freigegeben.<br>Sobald im Reiter <b>„Zu prüfen"</b> ein Mensch eine Meldung freigibt, erscheint sie hier — und in der externen Ansicht.</div>';
+
+  async function freigeben(id){
+    if(id === undefined || id === null || Number.isNaN(Number(id))) return;
+    try{
+      const res = await fetch(FREIGEBEN_API + '?id=' + encodeURIComponent(id), {cache:'no-store'});
+      if(!res.ok) throw new Error('HTTP ' + res.status);
+      await tick();                       // Kachel verschwindet aus „Zu prüfen", Zähler aktualisieren
+      if(current === 'audit') loadAudit();
+    }catch(e){ errBox.style.display = 'block'; errBox.textContent = 'Freigabe fehlgeschlagen (' + e.message + ') — läuft der Dashboard-Server-Workflow?'; }
+  }
+
+  function setCnt(id, n){ const e = document.getElementById(id); if(e) e.textContent = n; }
+
+  async function tick(){
+    try{
+      const res = await fetch(API, {cache:'no-store'});
+      if(!res.ok) throw new Error('HTTP ' + res.status);
+      const rows = await readRows(res);
+      errBox.style.display = 'none';
+      const pruefen = rows.filter(r => !isTrue(r.approved));
+      const frei = rows.filter(r => isTrue(r.approved));
+      document.getElementById('mode').textContent = rows.length ? (rows[0].source_mode||'?').toUpperCase() : '–';
+      const maxRun = rows.reduce((m, r) => (r.run_at && r.run_at > m) ? r.run_at : m, '');
+      document.getElementById('updated').textContent = maxRun ? fmtDT(maxRun) : '–';
+      setCnt('cnt-pruefen', pruefen.length);
+      setCnt('cnt-frei', frei.length);
+      moveThumb();                         // Thumb an evtl. geänderte Button-Breite (Zähler) angleichen
+      // Aktive Grid-Sicht nur bei Änderung neu rendern (kein Animations-Flackern der Highlight-Kachel).
+      if(current === 'pruefen'){
+        const sig = pruefen.map(rowSig).join('|');
+        if(sig !== sigP){ sigP = sig; renderGrid(gridP, pruefen, true, EMPTY_PRUEFEN); }
+      } else if(current === 'frei'){
+        const sig = frei.map(rowSig).join('|');
+        if(sig !== sigF){ sigF = sig; renderGrid(gridF, frei, false, EMPTY_FREI); }
+      }
+    }catch(e){ errBox.style.display = 'block'; errBox.textContent = 'Keine Verbindung zum Daten-Webhook (' + e.message + ') — n8n läuft? Workflow aktiv?'; }
+  }
+
+  async function loadAudit(){
+    const body = document.getElementById('auditBody');
+    try{
+      const res = await fetch(AUDIT_API, {cache:'no-store'});
+      if(!res.ok) throw new Error('HTTP ' + res.status);
+      const rows = await readRows(res);
+      body.innerHTML = rows.map((r, i) => {
+        const a = (r.ampel||'').toLowerCase(), sm = (r.source_mode||'').toLowerCase();
+        return `<tr style="--i:${Math.min(i, 14)}">
+          <td class="tdmono">${fmtDT(r.run_at)}</td><td>${esc(r.doc_name)}</td>
+          <td><span class="tag ${sm}">${esc(sm.toUpperCase())}</span></td><td>${esc(r.partner)}</td>
+          <td class="tdmono">${fmtDate(r.stichtag)}</td><td class="tdmono">${fmtDate(r.warndatum)}</td>
+          <td><span class="pill ${a}">${a.toUpperCase()}</span></td><td class="tdmono">${esc(r.eskalationsstufe)}</td>
+          <td>${isTrue(r.approved) ? '✓ ' + fmtDT(r.approved_at) : '—'}</td></tr>`;
+      }).join('') || '<tr><td colspan="9" class="empty">Noch keine Einträge.</td></tr>';
+    }catch(e){ body.innerHTML = '<tr><td colspan="9" class="empty">Audit-Log nicht erreichbar (' + e.message + ')</td></tr>'; }
+  }
+
+  function moveThumb(){
+    const id = current === 'pruefen' ? 'tab-pruefen' : current === 'frei' ? 'tab-frei' : 'tab-audit';
+    const btn = document.getElementById(id), thumb = document.getElementById('thumb');
+    thumb.style.width = btn.offsetWidth + 'px';
+    thumb.style.transform = 'translateX(' + (btn.offsetLeft - 4) + 'px)';
+  }
+  function flashIntro(view){ view.classList.add('intro'); setTimeout(() => view.classList.remove('intro'), 700); }
+
+  const VIEWS = { pruefen:'view-pruefen', frei:'view-frei', audit:'view-audit' };
+  const TABS  = { pruefen:'tab-pruefen', frei:'tab-frei', audit:'tab-audit' };
+
+  function switchView(name){
+    current = name;
+    for(const k in TABS){ const b = document.getElementById(TABS[k]); b.classList.toggle('on', k === name); b.setAttribute('aria-selected', k === name); }
+    for(const k in VIEWS){ document.getElementById(VIEWS[k]).classList.toggle('active', k === name); }
+    document.getElementById('legend').style.visibility = name === 'audit' ? 'hidden' : 'visible';
+    moveThumb();
+    const view = document.getElementById(VIEWS[name]);
+    flashIntro(view);
+    if(name === 'audit'){ loadAudit(); }
+    else if(name === 'pruefen'){ sigP = null; tick(); }
+    else { sigF = null; tick(); }
+  }
+
+  window.addEventListener('resize', moveThumb);
+  tick(); moveThumb();
+  setTimeout(() => document.getElementById('view-pruefen').classList.remove('intro'), 800);
+  setInterval(tick, 2500);
+</script>
+</body>
+</html>

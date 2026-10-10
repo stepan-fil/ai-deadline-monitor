@@ -1,0 +1,422 @@
+{
+  "name": "Fristenwächter — Dashboard-Server (M4 + Extern)",
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "nodes": [
+    {
+      "id": "whdata",
+      "name": "Webhook Daten",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "fw-data-webhook",
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "fristen-data",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "pgselect",
+      "name": "audit_log lesen",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM (\n  SELECT DISTINCT ON (doc_name)\n    id, doc_name, partner, pflicht, stichtag, vorlauf_tage, source_mode,\n    warndatum, resttage, resttage_stichtag, ampel, eskalationsstufe, run_at,\n    approved, approved_at\n  FROM audit_log\n  ORDER BY doc_name, run_at DESC, id DESC\n) t\nORDER BY eskalationsstufe DESC, resttage ASC",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_POSTGRES_CREDENTIAL_ID",
+          "name": "Fristenwaechter Postgres"
+        }
+      }
+    },
+    {
+      "id": "respjson",
+      "name": "Antwort JSON",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      }
+    },
+    {
+      "id": "whdash",
+      "name": "Webhook Dashboard",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        200
+      ],
+      "webhookId": "fw-dash-webhook",
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "dashboard",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "resphtml",
+      "name": "Antwort HTML",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        240,
+        200
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "<!DOCTYPE html>\n<html lang=\"de\">\n<head>\n<meta charset=\"utf-8\" />\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n<title>Fristen- &amp; Verpflichtungswächter</title>\n<style>\n  :root{\n    --bg-1:#0b1220; --bg-2:#111a2e;\n    --panel:#ffffff; --panel-2:#f8fafc;\n    --ink:#0f172a; --ink-2:#334155; --muted:#64748b; --line:#e6eaf0;\n    --violet:#6d28d9; --violet-bg:#f5f3ff; --teal:#0e7490;\n    --gruen:#15803d; --gelb:#b45309; --rot:#be123c;\n    --gruen-bg:#f0fdf4; --gelb-bg:#fffbeb; --rot-bg:#fff1f2;\n    --shadow:0 14px 40px -12px rgba(8,15,30,.45);\n    --shadow-sm:0 2px 8px -2px rgba(8,15,30,.18);\n    --r-card:18px; --r-md:11px; --r-sm:8px;\n    --ease:cubic-bezier(.22,.61,.36,1);\n    --sans:-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,Helvetica,Arial,sans-serif;\n  }\n  *{box-sizing:border-box}\n  body{\n    margin:0; font-family:var(--sans); color:var(--ink);\n    background:radial-gradient(1200px 600px at 70% -10%, #1c2944 0, var(--bg-1) 60%), var(--bg-1);\n    min-height:100dvh; padding:34px 26px 56px; -webkit-font-smoothing:antialiased;\n  }\n  .wrap{max-width:1180px; margin:0 auto}\n\n  header{display:flex; align-items:flex-end; justify-content:space-between; gap:24px; flex-wrap:wrap; margin-bottom:22px}\n  h1{font-size:28px; font-weight:600; letter-spacing:-.5px; margin:0 0 6px; color:#fff}\n  .sub{color:#aebbcd; font-size:14.5px; max-width:64ch; line-height:1.5}\n  .sub b{color:#e3eaf3; font-weight:600}\n  .status{display:flex; align-items:center; gap:18px; font-size:13px; color:#9fb0c6; white-space:nowrap}\n  .status .k{color:#6b7c95}\n  .status b{color:#e2e8f0; font-weight:600; font-variant-numeric:tabular-nums}\n  .live{display:flex; align-items:center; gap:7px}\n  .dot{width:8px; height:8px; border-radius:50%; background:#22c55e; box-shadow:0 0 0 0 rgba(34,197,94,.7); animation:pulse 2s infinite}\n  @keyframes pulse{70%{box-shadow:0 0 0 8px rgba(34,197,94,0)}100%{box-shadow:0 0 0 0 rgba(34,197,94,0)}}\n\n  .toolbar{display:flex; align-items:center; justify-content:space-between; gap:18px; flex-wrap:wrap; margin-bottom:18px}\n  /* Drei-Wege-Schalter: Zu prüfen · Freigegeben · Audit-Log (gleitender Thumb) */\n  .seg{position:relative; display:inline-flex; background:#0e1830; border:1px solid #243352; border-radius:13px; padding:4px}\n  .seg button{position:relative; z-index:1; display:inline-flex; align-items:center; gap:8px; border:0; background:transparent;\n    color:#9fb0c6; font-family:var(--sans); font-size:14px; font-weight:600; padding:9px 18px; border-radius:9px;\n    cursor:pointer; transition:color .25s var(--ease)}\n  .seg button.on{color:#0b1220}\n  .seg button:focus-visible{outline:2px solid #6d8cff; outline-offset:2px}\n  .seg .cnt{display:inline-flex; align-items:center; justify-content:center; min-width:22px; height:20px; padding:0 6px;\n    border-radius:999px; font-size:12px; font-weight:700; font-variant-numeric:tabular-nums;\n    background:rgba(159,176,198,.18); color:#aebbcd; transition:background .25s var(--ease), color .25s var(--ease)}\n  .seg button.on .cnt{background:rgba(11,18,32,.12); color:#0b1220}\n  .seg .thumb{position:absolute; top:4px; left:4px; height:calc(100% - 8px); border-radius:9px; background:#fff;\n    box-shadow:0 2px 8px rgba(0,0,0,.25); transition:transform .32s var(--ease), width .32s var(--ease)}\n  .legend{display:flex; gap:16px; color:#9fb0c6; font-size:13px; flex-wrap:wrap; align-items:center}\n  .legend span{display:flex; align-items:center; gap:6px}\n  .lamp{width:11px; height:11px; border-radius:50%}\n  .lamp.gruen{background:var(--gruen)} .lamp.gelb{background:var(--gelb)} .lamp.rot{background:var(--rot)}\n\n  .hint{color:#93a6bf; font-size:13px; line-height:1.55; margin:0 2px 16px; max-width:98ch}\n  .hint b{color:#c9d4e2; font-weight:600}\n\n  .err{background:#7f1d1d; color:#fee2e2; padding:10px 14px; border-radius:10px; font-size:13px; margin-bottom:16px; display:none}\n\n  /* ---- Sichten + Switch-Effekt ---- */\n  .view{display:none}\n  .view.active{display:block; animation:viewin .34s var(--ease) both}\n  @keyframes viewin{from{opacity:0; transform:translateY(8px)}to{opacity:1; transform:none}}\n\n  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(380px,1fr)); gap:18px}\n  .card{background:var(--panel); border-radius:var(--r-card); overflow:hidden; box-shadow:var(--shadow);\n    border:1px solid rgba(255,255,255,.06); display:flex; flex-direction:column}\n  .view.intro .card{animation:rise .42s var(--ease) both; animation-delay:calc(var(--i,0) * 45ms)}\n  @keyframes rise{from{opacity:0; transform:translateY(14px)}to{opacity:1; transform:none}}\n  .card .bar{height:5px}\n  .card .bar.gruen{background:var(--gruen)} .card .bar.gelb{background:var(--gelb)} .card .bar.rot{background:var(--rot)}\n  /* „gerade eingegangen\" — neueste Kachel (run_at < ~3 min) dezent hervorheben (Szene 5).\n     Egress-frei (reines CSS), Violett = an die „KI gelesen\"-Farbe gekoppelt. Nur in „Zu prüfen\". */\n  .card.new{box-shadow:var(--shadow), 0 0 0 2px var(--violet); animation:cardnew 2.5s var(--ease) infinite}\n  @keyframes cardnew{0%,100%{box-shadow:var(--shadow), 0 0 0 2px rgba(109,40,217,.55)}50%{box-shadow:var(--shadow), 0 0 0 7px rgba(109,40,217,.13)}}\n  .newflag{display:flex; align-items:center; gap:8px; padding:8px 18px; background:var(--violet-bg); color:var(--violet);\n    font-size:11.5px; font-weight:700; letter-spacing:.5px; text-transform:uppercase}\n  .newflag .nd{width:7px; height:7px; border-radius:50%; background:var(--violet); box-shadow:0 0 0 0 rgba(109,40,217,.55); animation:nddot 1.6s infinite}\n  @keyframes nddot{70%{box-shadow:0 0 0 7px rgba(109,40,217,0)}100%{box-shadow:0 0 0 0 rgba(109,40,217,0)}}\n  .card-head{display:flex; align-items:center; gap:14px; padding:17px 19px 11px}\n  .biglamp{width:36px; height:36px; border-radius:50%; flex:0 0 auto; position:relative}\n  .biglamp::after{content:\"\"; position:absolute; inset:7px 7px auto auto; width:9px; height:9px; border-radius:50%; background:rgba(255,255,255,.6)}\n  .biglamp.gruen{background:var(--gruen)} .biglamp.gelb{background:var(--gelb)} .biglamp.rot{background:var(--rot)}\n  .doc{min-width:0}\n  .doc .p{font-weight:600; font-size:17px; letter-spacing:-.2px; line-height:1.25}\n  .doc .f{font-weight:500; color:var(--muted); font-size:13px; margin-top:2px}\n  .src{margin-left:auto; align-self:flex-start; font-size:11px; font-weight:700; letter-spacing:.4px; padding:4px 10px; border-radius:7px}\n  .src.llm{background:var(--violet-bg); color:var(--violet)} .src.csv{background:#eef2ff; color:#4338ca}\n\n  .section{padding:5px 19px}\n  .section h4{margin:11px 0 7px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.6px; display:flex; align-items:center; gap:7px}\n  .read h4{color:var(--violet)}\n  .calc{background:var(--panel-2); margin-top:5px} .calc h4{color:var(--teal)}\n  .row{display:flex; justify-content:space-between; gap:14px; padding:7px 0; font-size:14px; border-bottom:1px solid #eef1f5}\n  .row:last-child{border-bottom:0}\n  .row .k{color:var(--muted)} .row .v{font-weight:600; text-align:right; color:var(--ink-2)}\n  .count{font-variant-numeric:tabular-nums}\n  .v.rot{color:var(--rot)} .v.gelb{color:var(--gelb)} .v.gruen{color:var(--gruen)}\n  .pill{display:inline-block; padding:3px 11px; border-radius:999px; font-weight:700; font-size:12.5px; letter-spacing:.3px}\n  .pill.gruen{background:var(--gruen-bg); color:var(--gruen)} .pill.gelb{background:var(--gelb-bg); color:var(--gelb)} .pill.rot{background:var(--rot-bg); color:var(--rot)}\n\n  .action{display:flex; align-items:center; gap:12px; padding:15px 19px; margin-top:auto; border-top:1px solid var(--line)}\n  .btn{background:var(--ink); color:#fff; border:0; border-radius:var(--r-md); padding:10px 18px; font-family:var(--sans);\n    font-size:14px; font-weight:600; cursor:pointer; transition:background .2s var(--ease), transform .08s var(--ease)}\n  .btn:hover{background:#1e293b} .btn:active{transform:translateY(1px)}\n  .btn:focus-visible{outline:2px solid #6d8cff; outline-offset:2px}\n  .await{color:var(--muted); font-size:13px}\n  .ok{display:inline-flex; align-items:center; gap:9px; color:var(--gruen); font-weight:600; font-size:14px}\n  .ok .chk{display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:var(--gruen-bg); font-size:12px}\n\n  /* ---- Audit-Sicht ---- */\n  .audit{background:var(--panel); border-radius:var(--r-card); border:1px solid rgba(255,255,255,.06); box-shadow:var(--shadow); overflow:hidden}\n  .audit .scroll{overflow:auto; max-height:64dvh}\n  table{border-collapse:collapse; width:100%; font-size:13.5px}\n  thead th{position:sticky; top:0; background:var(--panel-2); color:var(--muted); font-weight:600; text-align:left;\n    padding:12px 15px; border-bottom:1px solid var(--line); white-space:nowrap; letter-spacing:.2px}\n  tbody td{padding:11px 15px; border-bottom:1px solid #f1f4f8; white-space:nowrap; color:var(--ink-2)}\n  tbody tr{transition:background .15s var(--ease)} tbody tr:hover{background:#fafbfe}\n  .view.intro tbody tr{animation:rise .4s var(--ease) both; animation-delay:calc(var(--i,0) * 28ms)}\n  .tag{font-size:11px; font-weight:600; padding:2px 8px; border-radius:6px; letter-spacing:.3px}\n  .tag.csv{background:#eef2ff; color:#4338ca} .tag.llm{background:var(--violet-bg); color:var(--violet)}\n  .tdmono{font-variant-numeric:tabular-nums}\n\n  .empty{color:#aab6c9; padding:46px 30px; text-align:center; font-size:14.5px; line-height:1.6;\n    background:rgba(255,255,255,.03); border:1px dashed rgba(255,255,255,.12); border-radius:var(--r-card)}\n  .empty b{color:#cdd8e6; font-weight:600}\n  footer{color:#7b8aa1; font-size:12px; text-align:center; line-height:1.7; margin-top:28px}\n</style>\n</head>\n<body>\n<div class=\"wrap\">\n  <header>\n    <div>\n      <h1>Fristen- &amp; Verpflichtungswächter</h1>\n      <div class=\"sub\">Die KI <b>liest nur</b> die Felder aus dem Dokument — Ampel, Countdown und Eskalation rechnet das System <b>deterministisch</b>, ohne KI. Alles läuft <b>lokal</b>.</div>\n    </div>\n    <div class=\"status\">\n      <span class=\"live\"><span class=\"dot\"></span> live</span>\n      <span><span class=\"k\">Quelle</span> <b id=\"mode\">…</b></span>\n      <span><span class=\"k\">Daten-Stand</span> <b id=\"updated\">–</b></span>\n    </div>\n  </header>\n\n  <div class=\"toolbar\">\n    <div class=\"seg\" role=\"tablist\" aria-label=\"Ansicht wechseln\">\n      <span class=\"thumb\" id=\"thumb\"></span>\n      <button id=\"tab-pruefen\" class=\"on\" role=\"tab\" aria-selected=\"true\" onclick=\"switchView('pruefen')\">Zu prüfen <span class=\"cnt\" id=\"cnt-pruefen\">·</span></button>\n      <button id=\"tab-frei\" role=\"tab\" aria-selected=\"false\" onclick=\"switchView('frei')\">Freigegeben <span class=\"cnt\" id=\"cnt-frei\">·</span></button>\n      <button id=\"tab-audit\" role=\"tab\" aria-selected=\"false\" onclick=\"switchView('audit')\">Audit-Log</button>\n    </div>\n    <div class=\"legend\" id=\"legend\">\n      <span><i class=\"lamp gruen\"></i> grün · im Vorlauf</span>\n      <span><i class=\"lamp gelb\"></i> gelb · Vorwarnung läuft</span>\n      <span><i class=\"lamp rot\"></i> rot · Handlung nötig</span>\n    </div>\n  </div>\n\n  <div id=\"err\" class=\"err\"></div>\n\n  <!-- ANSICHT 1 — Zu prüfen (approved=false): Arbeits-Warteschlange, mit Freigeben. Standard beim Laden. -->\n  <section id=\"view-pruefen\" class=\"view active intro\" role=\"tabpanel\" aria-label=\"Zu prüfen\">\n    <p class=\"hint\">Diese Meldungen warten auf die <b>bewusste Freigabe durch einen Menschen</b> (Human-in-the-Loop). Oben steht, was die <b>KI gelesen</b> hat, darunter, was das System <b>berechnet</b> hat. Ein neu per E-Mail eingegangenes Dokument erscheint hier zuerst — markiert mit <b>„● gerade eingegangen\"</b>. Mit <b>„✋ Freigeben\"</b> wird die Meldung bestätigt und wandert in „Freigegeben\".</p>\n    <div id=\"grid-pruefen\" class=\"grid\"></div>\n  </section>\n\n  <!-- ANSICHT 2 — Freigegeben (approved=true): die finalen, read-only. Erscheinen auch extern. -->\n  <section id=\"view-frei\" class=\"view intro\" role=\"tabpanel\" aria-label=\"Freigegeben\">\n    <p class=\"hint\">Vom Menschen <b>bestätigte</b> Meldungen — schreibgeschützt. Genau diese Einträge sind auch in der <b>externen Ansicht</b> sichtbar. Jede zeigt den Zeitpunkt der Freigabe.</p>\n    <div id=\"grid-frei\" class=\"grid\"></div>\n  </section>\n\n  <!-- ANSICHT 3 — Audit-Log: vollständiges Protokoll (unverändert). -->\n  <section id=\"view-audit\" class=\"view\" role=\"tabpanel\" aria-label=\"Audit-Log\">\n    <p class=\"hint\">Vollständiges Protokoll <b>jedes Laufs</b> aus der Datenbank — wann gelesen, aus welcher Quelle (KI/CSV), welche Ampel berechnet wurde und ob ein Mensch freigegeben hat. Nichts wird überschrieben; jede Zeile bleibt nachvollziehbar.</p>\n    <div class=\"audit\"><div class=\"scroll\"><table>\n      <thead><tr>\n        <th>Zeitpunkt</th><th>Dokument</th><th>Quelle</th><th>Partner</th>\n        <th>Stichtag</th><th>Warndatum</th><th>Ampel</th><th>Stufe</th><th>Freigabe</th>\n      </tr></thead>\n      <tbody id=\"auditBody\"></tbody>\n    </table></div></div>\n  </section>\n\n  <footer>\n    Daten aus Postgres über lokale n8n-Webhooks · Aktualisierung alle 2,5&nbsp;s · kein Cloud-Dienst beteiligt.\n  </footer>\n</div>\n\n<script>\n  const API = '/webhook/fristen-data', AUDIT_API = '/webhook/audit-log', FREIGEBEN_API = '/webhook/freigeben';\n  const gridP = document.getElementById('grid-pruefen'), gridF = document.getElementById('grid-frei');\n  const errBox = document.getElementById('err');\n  let current = 'pruefen';                       // Standard-Ansicht beim Laden = „Zu prüfen\"\n  let sigP = null, sigF = null;                  // je Sicht eine Signatur → Render nur bei Änderung (kein Flackern)\n  const NEU_FENSTER_MS = 180000;                 // Kachel gilt ~3 min als „gerade eingegangen\" (Aufnahme-Puffer; Seed wird zurückdatiert)\n\n  // Leerer Body (n8n liefert bei 0 Zeilen 0 Bytes statt \"[]\") robust als [] behandeln.\n  async function readRows(res){ const t = await res.text(); let r = t ? JSON.parse(t) : []; return Array.isArray(r) ? r : (r ? [r] : []); }\n  // „neu\" = run_at liegt < ~3 min zurück (kleine Uhren-Toleranz nach vorn).\n  function isNew(r){ if(!r || !r.run_at) return false; const age = Date.now() - new Date(r.run_at).getTime(); return age > -15000 && age < NEU_FENSTER_MS; }\n\n  const pad = n => String(n).padStart(2, '0');\n  const isTrue = v => v === true || v === 't' || v === 'true' || v === 1;\n  const fmtDate = v => { if(!v) return '–'; const s = String(v).slice(0,10); const m = s.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/); return m ? `${m[3]}.${m[2]}.${m[1]}` : s; };\n  const fmtDT = v => { if(!v) return '–'; const d = new Date(v); if(isNaN(d.getTime())) return String(v); return `${pad(d.getDate())}.${pad(d.getMonth()+1)}. ${pad(d.getHours())}:${pad(d.getMinutes())}`; };\n  const restWarn = n => { n = Number(n); if(n > 0) return `in ${n} Tagen`; if(n === 0) return 'heute'; return `seit ${Math.abs(n)} Tagen offen`; };\n  const restStich = n => { n = Number(n); return n >= 0 ? `in ${n} Tagen` : `vor ${Math.abs(n)} Tagen`; };\n  const esc = s => String(s ?? '').replace(/[&<>\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]));\n\n  // Eine Kachel rendern. allowNew steuert das „gerade eingegangen\"-Highlight (nur in „Zu prüfen\").\n  // Die Aktionszeile richtet sich nach approved → Button (Zu prüfen) bzw. read-only-Status (Freigegeben).\n  function card(r, i, allowNew){\n    const a = (r.ampel || 'gruen').toLowerCase();\n    const sm = (r.source_mode || '').toLowerCase();\n    const approved = isTrue(r.approved);\n    const showNew = allowNew && isNew(r);\n    const action = approved\n      ? `<span class=\"ok\"><span class=\"chk\">✓</span> Freigegeben${r.approved_at ? ' · ' + fmtDT(r.approved_at) : ''}</span>`\n      : `<button class=\"btn\" onclick=\"freigeben(${Number(r.id)})\" title=\"Bestätigt diese Meldung und protokolliert sie im Audit-Log\">✋ Freigeben</button><span class=\"await\">wartet auf Mensch-Freigabe</span>`;\n    return `\n    <div class=\"card${showNew ? ' new' : ''}\" style=\"--i:${i}\">\n      <div class=\"bar ${a}\"></div>\n      ${showNew ? '<div class=\"newflag\"><span class=\"nd\"></span> gerade eingegangen</div>' : ''}\n      <div class=\"card-head\">\n        <div class=\"biglamp ${a}\"></div>\n        <div class=\"doc\"><div class=\"p\">${esc(r.partner)}</div><div class=\"f\">${esc(r.doc_name)}</div></div>\n        <div class=\"src ${sm}\">${esc(sm.toUpperCase())}</div>\n      </div>\n      <div class=\"section read\">\n        <h4>${sm === 'csv' ? '📄 Eingelesen · Quelle CSV' : '🧠 Gelesen · von der KI'}</h4>\n        <div class=\"row\"><span class=\"k\">Pflicht</span><span class=\"v\">${esc(r.pflicht)}</span></div>\n        <div class=\"row\"><span class=\"k\">Vertragspartner</span><span class=\"v\">${esc(r.partner)}</span></div>\n        <div class=\"row\"><span class=\"k\">Stichtag</span><span class=\"v\">${fmtDate(r.stichtag)}</span></div>\n        <div class=\"row\"><span class=\"k\">Vorlauf</span><span class=\"v\">${esc(r.vorlauf_tage)} Tage</span></div>\n      </div>\n      <div class=\"section calc\">\n        <h4>⚙️ Berechnet · deterministisch, ohne KI</h4>\n        <div class=\"row\"><span class=\"k\">Warndatum</span><span class=\"v\">${fmtDate(r.warndatum)}</span></div>\n        <div class=\"row\"><span class=\"k\">Vorwarnung</span><span class=\"v count ${a}\">${restWarn(r.resttage)}</span></div>\n        <div class=\"row\"><span class=\"k\">Stichtag</span><span class=\"v count\">${restStich(r.resttage_stichtag)}</span></div>\n        <div class=\"row\"><span class=\"k\">Ampel</span><span class=\"v\"><span class=\"pill ${a}\">${a.toUpperCase()}</span></span></div>\n        <div class=\"row\"><span class=\"k\">Eskalationsstufe</span><span class=\"v\">${({0:'0 — im Vorlauf',1:'1 — Vorwarnung',2:'2 — Eskalation'})[r.eskalationsstufe] ?? esc(r.eskalationsstufe)}</span></div>\n      </div>\n      <div class=\"action\">${action}</div>\n    </div>`;\n  }\n\n  function rowSig(r){ return `${r.id}:${isTrue(r.approved)}:${r.run_at}:${isNew(r)?1:0}`; }\n  function renderGrid(el, rows, allowNew, emptyHtml){\n    el.innerHTML = rows.length ? rows.map((r, i) => card(r, i, allowNew)).join('') : emptyHtml;\n  }\n  const EMPTY_PRUEFEN = '<div class=\"empty\">Nichts zu prüfen — alle Meldungen sind <b>freigegeben</b>.<br>Ein neu per E-Mail eingegangenes Dokument erscheint hier automatisch.</div>';\n  const EMPTY_FREI = '<div class=\"empty\">Noch nichts freigegeben.<br>Sobald im Reiter <b>„Zu prüfen\"</b> ein Mensch eine Meldung freigibt, erscheint sie hier — und in der externen Ansicht.</div>';\n\n  async function freigeben(id){\n    if(id === undefined || id === null || Number.isNaN(Number(id))) return;\n    try{\n      const res = await fetch(FREIGEBEN_API + '?id=' + encodeURIComponent(id), {cache:'no-store'});\n      if(!res.ok) throw new Error('HTTP ' + res.status);\n      await tick();                       // Kachel verschwindet aus „Zu prüfen\", Zähler aktualisieren\n      if(current === 'audit') loadAudit();\n    }catch(e){ errBox.style.display = 'block'; errBox.textContent = 'Freigabe fehlgeschlagen (' + e.message + ') — läuft der Dashboard-Server-Workflow?'; }\n  }\n\n  function setCnt(id, n){ const e = document.getElementById(id); if(e) e.textContent = n; }\n\n  async function tick(){\n    try{\n      const res = await fetch(API, {cache:'no-store'});\n      if(!res.ok) throw new Error('HTTP ' + res.status);\n      const rows = await readRows(res);\n      errBox.style.display = 'none';\n      const pruefen = rows.filter(r => !isTrue(r.approved));\n      const frei = rows.filter(r => isTrue(r.approved));\n      document.getElementById('mode').textContent = rows.length ? (rows[0].source_mode||'?').toUpperCase() : '–';\n      const maxRun = rows.reduce((m, r) => (r.run_at && r.run_at > m) ? r.run_at : m, '');\n      document.getElementById('updated').textContent = maxRun ? fmtDT(maxRun) : '–';\n      setCnt('cnt-pruefen', pruefen.length);\n      setCnt('cnt-frei', frei.length);\n      moveThumb();                         // Thumb an evtl. geänderte Button-Breite (Zähler) angleichen\n      // Aktive Grid-Sicht nur bei Änderung neu rendern (kein Animations-Flackern der Highlight-Kachel).\n      if(current === 'pruefen'){\n        const sig = pruefen.map(rowSig).join('|');\n        if(sig !== sigP){ sigP = sig; renderGrid(gridP, pruefen, true, EMPTY_PRUEFEN); }\n      } else if(current === 'frei'){\n        const sig = frei.map(rowSig).join('|');\n        if(sig !== sigF){ sigF = sig; renderGrid(gridF, frei, false, EMPTY_FREI); }\n      }\n    }catch(e){ errBox.style.display = 'block'; errBox.textContent = 'Keine Verbindung zum Daten-Webhook (' + e.message + ') — n8n läuft? Workflow aktiv?'; }\n  }\n\n  async function loadAudit(){\n    const body = document.getElementById('auditBody');\n    try{\n      const res = await fetch(AUDIT_API, {cache:'no-store'});\n      if(!res.ok) throw new Error('HTTP ' + res.status);\n      const rows = await readRows(res);\n      body.innerHTML = rows.map((r, i) => {\n        const a = (r.ampel||'').toLowerCase(), sm = (r.source_mode||'').toLowerCase();\n        return `<tr style=\"--i:${Math.min(i, 14)}\">\n          <td class=\"tdmono\">${fmtDT(r.run_at)}</td><td>${esc(r.doc_name)}</td>\n          <td><span class=\"tag ${sm}\">${esc(sm.toUpperCase())}</span></td><td>${esc(r.partner)}</td>\n          <td class=\"tdmono\">${fmtDate(r.stichtag)}</td><td class=\"tdmono\">${fmtDate(r.warndatum)}</td>\n          <td><span class=\"pill ${a}\">${a.toUpperCase()}</span></td><td class=\"tdmono\">${esc(r.eskalationsstufe)}</td>\n          <td>${isTrue(r.approved) ? '✓ ' + fmtDT(r.approved_at) : '—'}</td></tr>`;\n      }).join('') || '<tr><td colspan=\"9\" class=\"empty\">Noch keine Einträge.</td></tr>';\n    }catch(e){ body.innerHTML = '<tr><td colspan=\"9\" class=\"empty\">Audit-Log nicht erreichbar (' + e.message + ')</td></tr>'; }\n  }\n\n  function moveThumb(){\n    const id = current === 'pruefen' ? 'tab-pruefen' : current === 'frei' ? 'tab-frei' : 'tab-audit';\n    const btn = document.getElementById(id), thumb = document.getElementById('thumb');\n    thumb.style.width = btn.offsetWidth + 'px';\n    thumb.style.transform = 'translateX(' + (btn.offsetLeft - 4) + 'px)';\n  }\n  function flashIntro(view){ view.classList.add('intro'); setTimeout(() => view.classList.remove('intro'), 700); }\n\n  const VIEWS = { pruefen:'view-pruefen', frei:'view-frei', audit:'view-audit' };\n  const TABS  = { pruefen:'tab-pruefen', frei:'tab-frei', audit:'tab-audit' };\n\n  function switchView(name){\n    current = name;\n    for(const k in TABS){ const b = document.getElementById(TABS[k]); b.classList.toggle('on', k === name); b.setAttribute('aria-selected', k === name); }\n    for(const k in VIEWS){ document.getElementById(VIEWS[k]).classList.toggle('active', k === name); }\n    document.getElementById('legend').style.visibility = name === 'audit' ? 'hidden' : 'visible';\n    moveThumb();\n    const view = document.getElementById(VIEWS[name]);\n    flashIntro(view);\n    if(name === 'audit'){ loadAudit(); }\n    else if(name === 'pruefen'){ sigP = null; tick(); }\n    else { sigF = null; tick(); }\n  }\n\n  window.addEventListener('resize', moveThumb);\n  tick(); moveThumb();\n  setTimeout(() => document.getElementById('view-pruefen').classList.remove('intro'), 800);\n  setInterval(tick, 2500);\n</script>\n</body>\n</html>\n",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "whfrei",
+      "name": "Webhook Freigeben",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        400
+      ],
+      "webhookId": "fw-freigeben-webhook",
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "freigeben",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "pgupd",
+      "name": "Freigabe schreiben",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        240,
+        400
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE audit_log SET approved = true, approved_at = now() WHERE id = $1::int AND approved = false",
+        "options": {
+          "queryReplacement": "={{ [$json.query.id] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_POSTGRES_CREDENTIAL_ID",
+          "name": "Fristenwaechter Postgres"
+        }
+      }
+    },
+    {
+      "id": "respfrei",
+      "name": "Antwort Freigabe",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        480,
+        400
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "{ \"ok\": true }",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json; charset=utf-8"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "whaudit",
+      "name": "Webhook Audit-Log",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        600
+      ],
+      "webhookId": "fw-audit-webhook",
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "audit-log",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "pgaudit",
+      "name": "audit_log voll lesen",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        240,
+        600
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, run_at, source_mode, doc_name, partner, stichtag, vorlauf_tage,\n        warndatum, resttage, ampel, eskalationsstufe, approved, approved_at\n FROM audit_log\n ORDER BY run_at DESC, id DESC\n LIMIT 200",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_POSTGRES_CREDENTIAL_ID",
+          "name": "Fristenwaechter Postgres"
+        }
+      }
+    },
+    {
+      "id": "respaudit",
+      "name": "Antwort Audit-Log",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        480,
+        600
+      ],
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      }
+    },
+    {
+      "id": "whextdata",
+      "name": "Webhook Extern-Daten",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        800
+      ],
+      "webhookId": "fw-extern-data-webhook",
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "extern-data",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "pgextsel",
+      "name": "Freigegebene lesen",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        240,
+        800
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT doc_name, partner, pflicht, stichtag, vorlauf_tage, source_mode,\n        warndatum, resttage, resttage_stichtag, ampel, eskalationsstufe, approved_at\n FROM (\n  SELECT DISTINCT ON (doc_name)\n    doc_name, partner, pflicht, stichtag, vorlauf_tage, source_mode,\n    warndatum, resttage, resttage_stichtag, ampel, eskalationsstufe,\n    approved_at, run_at, id\n  FROM audit_log\n  WHERE approved = true\n  ORDER BY doc_name, run_at DESC, id DESC\n) t\nORDER BY eskalationsstufe DESC, resttage ASC",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_POSTGRES_CREDENTIAL_ID",
+          "name": "Fristenwaechter Postgres"
+        }
+      }
+    },
+    {
+      "id": "respextjson",
+      "name": "Antwort Extern-JSON",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        480,
+        800
+      ],
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      }
+    },
+    {
+      "id": "whext",
+      "name": "Webhook Extern",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        1000
+      ],
+      "webhookId": "fw-extern-webhook",
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "extern",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "respexthtml",
+      "name": "Antwort Extern-HTML",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        240,
+        1000
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "<!DOCTYPE html>\n<html lang=\"de\">\n<head>\n<meta charset=\"utf-8\" />\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n<title>Fristen-Übersicht — Freigegeben (Externe Ansicht)</title>\n<style>\n  :root{\n    --bg-1:#07130f; --bg-2:#0c1f18;\n    --panel:#ffffff; --panel-2:#f6fbf8;\n    --ink:#0f172a; --ink-2:#334155; --muted:#64748b; --line:#e6eaf0;\n    --green:#0f766e; --green-bg:#ecfdf5;\n    --gruen:#15803d; --gelb:#b45309; --rot:#be123c;\n    --gruen-bg:#f0fdf4; --gelb-bg:#fffbeb; --rot-bg:#fff1f2;\n    --shadow:0 14px 40px -12px rgba(6,20,15,.45);\n    --r-card:18px; --r-md:11px;\n    --ease:cubic-bezier(.22,.61,.36,1);\n    --sans:-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,Helvetica,Arial,sans-serif;\n  }\n  *{box-sizing:border-box}\n  body{\n    margin:0; font-family:var(--sans); color:var(--ink);\n    background:radial-gradient(1200px 600px at 70% -10%, #12342a 0, var(--bg-1) 60%), var(--bg-1);\n    min-height:100dvh; padding:34px 26px 56px; -webkit-font-smoothing:antialiased;\n  }\n  .wrap{max-width:1180px; margin:0 auto}\n\n  header{display:flex; align-items:flex-end; justify-content:space-between; gap:24px; flex-wrap:wrap; margin-bottom:16px}\n  .badge{display:inline-flex; align-items:center; gap:8px; font-size:11.5px; font-weight:700; letter-spacing:.6px;\n    text-transform:uppercase; color:#d1fae5; background:rgba(16,185,129,.14); border:1px solid rgba(16,185,129,.35);\n    padding:6px 12px; border-radius:999px; margin-bottom:11px}\n  .badge .lock{font-size:12px}\n  h1{font-size:28px; font-weight:600; letter-spacing:-.5px; margin:0 0 6px; color:#fff}\n  .sub{color:#9ec8ba; font-size:14.5px; max-width:64ch; line-height:1.5}\n  .sub b{color:#d7efe6; font-weight:600}\n  .status{display:flex; align-items:center; gap:18px; font-size:13px; color:#8fb6a8; white-space:nowrap}\n  .status .k{color:#5f8576}\n  .status b{color:#dcfce7; font-weight:600; font-variant-numeric:tabular-nums}\n  .live{display:flex; align-items:center; gap:7px}\n  .dot{width:8px; height:8px; border-radius:50%; background:#22c55e; box-shadow:0 0 0 0 rgba(34,197,94,.7); animation:pulse 2s infinite}\n  @keyframes pulse{70%{box-shadow:0 0 0 8px rgba(34,197,94,0)}100%{box-shadow:0 0 0 0 rgba(34,197,94,0)}}\n\n  .toolbar{display:flex; align-items:center; justify-content:flex-end; gap:15px; flex-wrap:wrap; margin:6px 2px 16px}\n  .legend{display:flex; gap:16px; color:#8fb6a8; font-size:13px; flex-wrap:wrap; align-items:center}\n  .legend span{display:flex; align-items:center; gap:6px}\n  .lamp{width:11px; height:11px; border-radius:50%}\n  .lamp.gruen{background:var(--gruen)} .lamp.gelb{background:var(--gelb)} .lamp.rot{background:var(--rot)}\n\n  .err{background:#7f1d1d; color:#fee2e2; padding:10px 14px; border-radius:10px; font-size:13px; margin-bottom:16px; display:none}\n\n  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(380px,1fr)); gap:18px}\n  .card{background:var(--panel); border-radius:var(--r-card); overflow:hidden; box-shadow:var(--shadow);\n    border:1px solid rgba(255,255,255,.06); display:flex; flex-direction:column; animation:rise .42s var(--ease) both;\n    animation-delay:calc(var(--i,0) * 45ms)}\n  @keyframes rise{from{opacity:0; transform:translateY(14px)}to{opacity:1; transform:none}}\n  .card .bar{height:5px}\n  .card .bar.gruen{background:var(--gruen)} .card .bar.gelb{background:var(--gelb)} .card .bar.rot{background:var(--rot)}\n  .card-head{display:flex; align-items:center; gap:14px; padding:17px 19px 11px}\n  .biglamp{width:36px; height:36px; border-radius:50%; flex:0 0 auto; position:relative}\n  .biglamp::after{content:\"\"; position:absolute; inset:7px 7px auto auto; width:9px; height:9px; border-radius:50%; background:rgba(255,255,255,.6)}\n  .biglamp.gruen{background:var(--gruen)} .biglamp.gelb{background:var(--gelb)} .biglamp.rot{background:var(--rot)}\n  .doc{min-width:0}\n  .doc .p{font-weight:600; font-size:17px; letter-spacing:-.2px; line-height:1.25}\n  .doc .f{font-weight:500; color:var(--muted); font-size:13px; margin-top:2px}\n  .src{margin-left:auto; align-self:flex-start; font-size:11px; font-weight:700; letter-spacing:.4px; padding:4px 10px; border-radius:7px}\n  .src.llm{background:#f5f3ff; color:#6d28d9} .src.csv{background:#eef2ff; color:#4338ca}\n\n  .section{padding:5px 19px}\n  .section h4{margin:11px 0 7px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.6px; display:flex; align-items:center; gap:7px}\n  .read h4{color:#6d28d9}\n  .calc{background:var(--panel-2); margin-top:5px} .calc h4{color:#0e7490}\n  .row{display:flex; justify-content:space-between; gap:14px; padding:7px 0; font-size:14px; border-bottom:1px solid #eef1f5}\n  .row:last-child{border-bottom:0}\n  .row .k{color:var(--muted)} .row .v{font-weight:600; text-align:right; color:var(--ink-2)}\n  .count{font-variant-numeric:tabular-nums}\n  .v.rot{color:var(--rot)} .v.gelb{color:var(--gelb)} .v.gruen{color:var(--gruen)}\n  .pill{display:inline-block; padding:3px 11px; border-radius:999px; font-weight:700; font-size:12.5px; letter-spacing:.3px}\n  .pill.gruen{background:var(--gruen-bg); color:var(--gruen)} .pill.gelb{background:var(--gelb-bg); color:var(--gelb)} .pill.rot{background:var(--rot-bg); color:var(--rot)}\n\n  .foot{display:flex; align-items:center; gap:10px; padding:14px 19px; margin-top:auto; border-top:1px solid var(--line); background:var(--green-bg)}\n  .foot .chk{display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:#d1fae5; color:var(--green); font-size:12px}\n  .foot .t{color:var(--green); font-weight:600; font-size:13.5px}\n\n  .empty{color:#9ec8ba; padding:46px 30px; text-align:center; font-size:14.5px; line-height:1.6;\n    background:rgba(255,255,255,.03); border:1px dashed rgba(255,255,255,.12); border-radius:var(--r-card)}\n  footer{color:#6f9486; font-size:12px; text-align:center; line-height:1.7; margin-top:28px}\n</style>\n</head>\n<body>\n<div class=\"wrap\">\n  <header>\n    <div>\n      <span class=\"badge\"><span class=\"lock\">🔒</span> Externe Ansicht · nur freigegebene Meldungen</span>\n      <h1>Fristen-Übersicht</h1>\n      <div class=\"sub\">Diese Ansicht zeigt <b>ausschließlich Meldungen, die ein Mensch freigegeben hat</b>. Was intern noch in Prüfung ist, erscheint hier nicht. Alles läuft <b>lokal</b>.</div>\n    </div>\n    <div class=\"status\">\n      <span class=\"live\"><span class=\"dot\"></span> live</span>\n      <span><span class=\"k\">Freigegeben</span> <b id=\"count\">–</b></span>\n      <span><span class=\"k\">Stand</span> <b id=\"updated\">–</b></span>\n    </div>\n  </header>\n\n  <div class=\"toolbar\">\n    <div class=\"legend\">\n      <span><i class=\"lamp gruen\"></i> grün · im Vorlauf</span>\n      <span><i class=\"lamp gelb\"></i> gelb · Vorwarnung läuft</span>\n      <span><i class=\"lamp rot\"></i> rot · Handlung nötig</span>\n    </div>\n  </div>\n\n  <div id=\"err\" class=\"err\"></div>\n  <div id=\"grid\" class=\"grid\"></div>\n\n  <footer>\n    Daten aus Postgres über lokalen n8n-Webhook · nur freigegebene Einträge · Aktualisierung alle 2,5&nbsp;s · kein Cloud-Dienst beteiligt.\n  </footer>\n</div>\n\n<script>\n  const API = '/webhook/extern-data';\n  const grid = document.getElementById('grid'), errBox = document.getElementById('err');\n\n  const pad = n => String(n).padStart(2, '0');\n  const isTrue = v => v === true || v === 't' || v === 'true' || v === 1;\n  const fmtDate = v => { if(!v) return '–'; const s = String(v).slice(0,10); const m = s.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/); return m ? `${m[3]}.${m[2]}.${m[1]}` : s; };\n  const fmtDT = v => { if(!v) return '–'; const d = new Date(v); if(isNaN(d.getTime())) return String(v); return `${pad(d.getDate())}.${pad(d.getMonth()+1)}. ${pad(d.getHours())}:${pad(d.getMinutes())}`; };\n  const restWarn = n => { n = Number(n); if(n > 0) return `in ${n} Tagen`; if(n === 0) return 'heute'; return `seit ${Math.abs(n)} Tagen offen`; };\n  const restStich = n => { n = Number(n); return n >= 0 ? `in ${n} Tagen` : `vor ${Math.abs(n)} Tagen`; };\n  const esc = s => String(s ?? '').replace(/[&<>\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]));\n\n  function card(r, i){\n    const a = (r.ampel || 'gruen').toLowerCase();\n    const sm = (r.source_mode || '').toLowerCase();\n    return `\n    <div class=\"card\" style=\"--i:${i}\">\n      <div class=\"bar ${a}\"></div>\n      <div class=\"card-head\">\n        <div class=\"biglamp ${a}\"></div>\n        <div class=\"doc\"><div class=\"p\">${esc(r.partner)}</div><div class=\"f\">${esc(r.doc_name)}</div></div>\n        <div class=\"src ${sm}\">${esc(sm.toUpperCase())}</div>\n      </div>\n      <div class=\"section read\">\n        <h4>${sm === 'csv' ? '📄 Eingelesen · Quelle CSV' : '🧠 Gelesen · von der KI'}</h4>\n        <div class=\"row\"><span class=\"k\">Pflicht</span><span class=\"v\">${esc(r.pflicht)}</span></div>\n        <div class=\"row\"><span class=\"k\">Vertragspartner</span><span class=\"v\">${esc(r.partner)}</span></div>\n        <div class=\"row\"><span class=\"k\">Stichtag</span><span class=\"v\">${fmtDate(r.stichtag)}</span></div>\n        <div class=\"row\"><span class=\"k\">Vorlauf</span><span class=\"v\">${esc(r.vorlauf_tage)} Tage</span></div>\n      </div>\n      <div class=\"section calc\">\n        <h4>⚙️ Berechnet · deterministisch, ohne KI</h4>\n        <div class=\"row\"><span class=\"k\">Warndatum</span><span class=\"v\">${fmtDate(r.warndatum)}</span></div>\n        <div class=\"row\"><span class=\"k\">Vorwarnung</span><span class=\"v count ${a}\">${restWarn(r.resttage)}</span></div>\n        <div class=\"row\"><span class=\"k\">Stichtag</span><span class=\"v count\">${restStich(r.resttage_stichtag)}</span></div>\n        <div class=\"row\"><span class=\"k\">Ampel</span><span class=\"v\"><span class=\"pill ${a}\">${a.toUpperCase()}</span></span></div>\n        <div class=\"row\"><span class=\"k\">Eskalationsstufe</span><span class=\"v\">${({0:'0 — im Vorlauf',1:'1 — Vorwarnung',2:'2 — Eskalation'})[r.eskalationsstufe] ?? esc(r.eskalationsstufe)}</span></div>\n      </div>\n      <div class=\"foot\"><span class=\"chk\">✓</span><span class=\"t\">Freigegeben${r.approved_at ? ' · ' + fmtDT(r.approved_at) : ''}</span></div>\n    </div>`;\n  }\n\n  // Leerer Body (n8n liefert bei 0 freigegebenen Zeilen 0 Bytes statt \"[]\") robust als [] behandeln,\n  // damit der „leeren Start\"-Zustand sauber rendert (kein JSON-Fehler) — wichtig für den Reveal (Szene 7).\n  async function readRows(res){ const t = await res.text(); let r = t ? JSON.parse(t) : []; return Array.isArray(r) ? r : (r ? [r] : []); }\n\n  async function tick(){\n    try{\n      const res = await fetch(API, {cache:'no-store'});\n      if(!res.ok) throw new Error('HTTP ' + res.status);\n      const rows = await readRows(res);\n      errBox.style.display = 'none';\n      document.getElementById('count').textContent = rows.length;\n      const maxApp = rows.reduce((m, r) => (r.approved_at && r.approved_at > m) ? r.approved_at : m, '');\n      document.getElementById('updated').textContent = maxApp ? fmtDT(maxApp) : '–';\n      grid.innerHTML = rows.length\n        ? rows.map(card).join('')\n        : '<div class=\"empty\">Noch nichts freigegeben.<br>Sobald im internen Dashboard ein Mensch eine Meldung <b>freigibt</b>, erscheint sie hier.</div>';\n    }catch(e){ errBox.style.display = 'block'; errBox.textContent = 'Keine Verbindung zum Daten-Webhook (' + e.message + ') — läuft der Dashboard-Server-Workflow?'; }\n  }\n\n  tick();\n  setInterval(tick, 2500);\n</script>\n</body>\n</html>\n",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook Daten": {
+      "main": [
+        [
+          {
+            "node": "audit_log lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "audit_log lesen": {
+      "main": [
+        [
+          {
+            "node": "Antwort JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Dashboard": {
+      "main": [
+        [
+          {
+            "node": "Antwort HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Freigeben": {
+      "main": [
+        [
+          {
+            "node": "Freigabe schreiben",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Freigabe schreiben": {
+      "main": [
+        [
+          {
+            "node": "Antwort Freigabe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Audit-Log": {
+      "main": [
+        [
+          {
+            "node": "audit_log voll lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "audit_log voll lesen": {
+      "main": [
+        [
+          {
+            "node": "Antwort Audit-Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Extern-Daten": {
+      "main": [
+        [
+          {
+            "node": "Freigegebene lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Freigegebene lesen": {
+      "main": [
+        [
+          {
+            "node": "Antwort Extern-JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Extern": {
+      "main": [
+        [
+          {
+            "node": "Antwort Extern-HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
