@@ -80,6 +80,10 @@ flowchart LR
 
 Everything runs on one machine: the documents, the language model, the database and even the mailbox. There is no cloud LLM anywhere in the data path. n8n's default telemetry was found during a security review and switched off, so the "nothing leaves the machine" claim is actually true.
 
+## Security notes
+
+This is a local demo, not a hardened deployment. Every service binds to `127.0.0.1` and nothing leaves the machine, but inside that boundary there is no authentication: the n8n webhooks are open to anything that can reach `localhost:5678`, approvals are plain GET requests, the demo mail server accepts unauthenticated plaintext mail, and document text goes straight into the LLM prompt (the human approval step is the safeguard). Before exposing it to a network or processing real confidential documents, add authentication with TLS, POST requests with CSRF protection for approvals, and parameterised SQL.
+
 ## Tech stack
 
 | Component | Choice | Role |
