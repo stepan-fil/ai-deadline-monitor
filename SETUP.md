@@ -149,7 +149,7 @@ In M2 entstehen **zwei** Workflows:
 Voraussetzung: `testdata/` ist read-only in den Container gemountet (`/data/testdata`) und
 `N8N_RESTRICT_FILE_ACCESS_TO` gibt es frei — beides ist in `docker-compose.yml` bereits gesetzt.
 
-Schritte in n8n (http://localhost:5678):
+Schritte in n8n (`http://localhost:5678`):
 1. **Owner-Konto** anlegen (einmalig, lokal — siehe §6).
 2. **Postgres-Credential** anlegen: Typ *Postgres*, Host `postgres`, Port `5432`, Datenbank + User
    `fristenwaechter`, Passwort = `POSTGRES_PASSWORD` aus `.env` (n8n erreicht die DB über den
@@ -157,7 +157,7 @@ Schritte in n8n (http://localhost:5678):
 3. Beide JSON über **Import from File** laden; in den Postgres-Knoten beider Workflows das Credential
    aus Schritt 2 auswählen.
 4. **WF-B aktivieren** (Toggle oben rechts). WF-A bleibt manuell (Button „Test workflow").
-5. WF-A einmal ausführen → 10 Zeilen in `audit_log`. Dashboard: **http://localhost:5678/webhook/dashboard**.
+5. WF-A einmal ausführen → 10 Zeilen in `audit_log`. Dashboard: `http://localhost:5678/webhook/dashboard`.
 
 > **JSON neu erzeugen** (z. B. nach Änderung an `dashboard/dashboard.html`):
 > `FW_PG_CRED_ID=<credential-id> node n8n/build_workflows.mjs` — das Skript bettet das aktuelle

@@ -6,12 +6,14 @@
 
 **My role:** I designed and built it end to end (architecture, n8n workflows, rule engine, dashboards, test data, accuracy benchmark) in June 2026, with Claude Code as AI pair programmer.
 
-> **Featured:** used as the demo in a talk on AI workflow automation at the Q-FOX® Group AI event
+> **Featured:** used as the demo in a talk at the Q-FOX® Group AI event
 > *„AI verändert rasant den Markt – Wie Unternehmen jetzt Potenziale erschließen“* (Germany, 3 July 2026).
 
 ![Review queue: what the AI read (top) and what the system calculated (bottom), waiting for human approval](docs/screenshots/review-queue.png)
 
 *Screenshots show the seeded demo board (German UI). On pre-seeded cards, partner and obligation are set to the human-checked values, which is the correction the approval step exists for.*
+
+There is no hosted demo. The tool runs only on your own machine by design, so the screenshots on this page show what it looks like.
 
 ---
 
@@ -59,6 +61,7 @@ Model: `llama3.2:3b`, running locally through Ollama on an 8 GB Apple M2 (about 
 ```mermaid
 flowchart LR
     A["📧 Email with PDF<br/>(local mail server)"] --> C
+    H["📁 Folder of PDFs"] --> C
     B["📄 CSV table<br/>(fallback, no AI)"] --> D
     C["PDF → text → local LLM<br/>extracts 4 fields"] --> D
     D["⚙️ Fixed rules<br/>warning date · status · escalation"] --> E[("Postgres<br/>audit log")]
@@ -116,7 +119,7 @@ docker compose up -d
 open http://localhost:5678  # create the local n8n owner account (stays on your machine)
 ```
 
-Then, in n8n: add a Postgres credential (host `postgres`, database and user `fristenwaechter`, password from `.env`), import the three workflows from `n8n/`, activate the dashboard workflow, and run the CSV workflow once. The board is at `http://localhost:5678/webhook/dashboard`. The full step-by-step guide, including the email path and troubleshooting, is in [`SETUP.md`](SETUP.md) (German).
+Then, in n8n: add a Postgres credential (host `postgres`, database and user `fristenwaechter`, password from `.env`), import the three workflows from `n8n/`, activate the dashboard workflow, and run the CSV workflow once. The board then runs on your machine at `http://localhost:5678/webhook/dashboard`. The full step-by-step guide, including the email path and troubleshooting, is in [`SETUP.md`](SETUP.md) (German).
 
 ## Repository structure
 
@@ -148,7 +151,7 @@ Then, in n8n: add a Postgres credential (host `postgres`, database and user `fri
 
 ## How it was built
 
-Designed and built by **Stepan Filazafovitch** in June 2026, with Claude Code as the AI pair programmer. The project was planned as milestones, every decision was logged, and each step was checked by independent review agents before moving on.
+Designed and built by **Stepan Filazafovitch** in June 2026, with Claude Code as the AI pair programmer. The project was planned as milestones, every decision was logged, and each step was checked by independent review agents before moving on. IDs in the code comments such as `ENTSCHEIDUNG-17` or `R5` refer to that private project log, which is not part of this repository.
 
 [LinkedIn](https://www.linkedin.com/in/stepan-filazafovitch-8562bb262/)
 
